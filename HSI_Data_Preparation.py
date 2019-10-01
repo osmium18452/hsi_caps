@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sat Feb 18 16:21:13 2017
-@author: Xiangyong Cao
-This code is modified based on https://github.com/KGPML/Hyperspectral
-"""
-
 import scipy.io
 import numpy as np
 from random import shuffle
@@ -36,6 +29,7 @@ Label = scipy.io.loadmat(os.path.join(DATA_PATH, 'Indian_pines_gt.mat'))['indian
 ## Some constant parameters
 Height, Width, Band = Data.shape[0], Data.shape[1], Data.shape[2]
 Num_Classes = len(np.unique(Label)) - 1  # Simu: len(np.unique(Label))
+#python cl_caps_train.py -g 0 -d ./test/model3/1 -m 3
 
 ## Scale the HSI Data between [0,1]
 Data = Data.astype(float)
@@ -55,10 +49,10 @@ Data_Padding = np.zeros((Height + int(patch_size - 1), Width + int(patch_size - 
 for band in range(Band):
 	Data_Padding[:, :, band] = pad(Data[:, :, band], int((patch_size - 1) / 2), 'symmetric')
 
+transpose_array = np.transpose(Data_Padding, (2, 0, 1))
 
 def Patch(height_index, width_index):
 	""" function to extract patches from the orignal data """
-	transpose_array = np.transpose(Data_Padding, (2, 0, 1))
 	height_slice = slice(height_index, height_index + patch_size)
 	width_slice = slice(width_index, width_index + patch_size)
 	patch = transpose_array[:, height_slice, width_slice]

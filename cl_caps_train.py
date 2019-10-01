@@ -2,13 +2,13 @@ from __future__ import print_function
 import tensorflow as tf
 import HSI_Data_Preparation
 from HSI_Data_Preparation import num_train, Band, All_data, TrainIndex, TestIndex, Height, Width, num_test
-from utils import patch_size, Post_Processing, safe_norm, squash
+from utils import patch_size, Post_Processing
 import numpy as np
 import os
 import scipy.io
 import time
 import capslayer as cl
-from caps_model import caps_net, caps_net_mod
+from caps_model import caps_net, caps_net_mod, caps_net_3
 import argparse
 
 
@@ -32,21 +32,25 @@ parser.add_argument("-d", "--directory", default="./saved_model",
 					help="The directory you want to save your model.")
 parser.add_argument("-b", "--batch", default=100, type=int,
 					help="Set batch size.")
-parser.add_argument("-m", "--model", default=1, type=int,
+parser.add_argument("-m", "--model", default=2, type=int,
 					help="Use which model to train and predict.")
 parser.add_argument("-r", "--restore", default=False,
 					help="Restore the trained model or not. True or False")
 parser.add_argument("-c", "--cost", default="margin",
 					help="Use margin loss or cross entropy as loss function. 'margin' for margin loss or 'cross' for cross entropy.")
-parser.add_argument("-l", "--lr", default=0.0001, type=float,
-					help="learning rate")
+parser.add_argument("-l", "--lr", default=0.001, type=float,
+					help="Learning rate")
 parser.add_argument("-t", "--predict_times", default=400, type=int,
-					help="times you want to predict. smaller times causes bigger batches.")
+					help="Times you want to predict. smaller times causes bigger batches.")
 parser.add_argument("-o", "--optimizer", default="adam", type=str,
-					help="use adam optimizer or sgd optmizer")
+					help="Use adam optimizer or sgd optmizer")
 parser.add_argument("-p", "--predict_batch", default=100, type=int,
-					help="predict batch size")
+					help="Predict batch size.")
+parser.add_argument("-n","--normalize",default=1,type=int,
+					help="Normalize the result with 1 or not with 0.")
 args = parser.parse_args()
+
+print(np.array(All_data["patch"]).shape)
 
 print(args)
 
@@ -54,14 +58,14 @@ os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
 start_time = time.time()
 
-Training_data, Test_data = HSI_Data_Preparation.Prepare_data()
+training_data, testing_data = HSI_Data_Preparation.Prepare_data()
 n_input = Band * patch_size * patch_size
 
-Training_data['train_patch'] = np.transpose(Training_data['train_patch'], (0, 2, 3, 1))
-Test_data['test_patch'] = np.transpose(Test_data['test_patch'], (0, 2, 3, 1))
+training_data['train_patch'] = np.transpose(training_data['train_patch'], (0, 2, 3, 1))
+testing_data['test_patch'] = np.transpose(testing_data['test_patch'], (0, 2, 3, 1))
 
-Training_data['train_patch'] = np.reshape(Training_data['train_patch'], (-1, n_input))
-Test_data['test_patch'] = np.reshape(Test_data['test_patch'], (-1, n_input))
+training_data['train_patch'] = np.reshape(training_data['train_patch'], (-1, n_input))
+testing_data['test_patch'] = np.reshape(testing_data['test_patch'], (-1, n_input))
 
 # Parameters
 learning_rate = args.lr
@@ -76,7 +80,13 @@ y = tf.placeholder(shape=[None, n_classes], dtype=tf.float32, name="y")
 if args.model == 1:
 	pred = caps_net(x)
 else:
-	pred = caps_net_mod(x)
+	if args.model == 2:
+		pred = caps_net_mod(x)
+	else:
+		pred = caps_net_3(x)
+
+if args.normalize == 1:
+	pred=tf.divide(pred,tf.reduce_sum(pred,1,keep_dims=True))
 
 margin_loss = cl.losses.margin_loss(y, pred)
 cost = tf.reduce_mean(margin_loss)
@@ -96,9 +106,9 @@ predict_test_label = tf.argmax(pred, 1)
 # Initializing the variables
 init = tf.global_variables_initializer()
 
-x_test, y_test = Test_data['test_patch'], Test_data['test_labels']
+x_test, y_test = testing_data['test_patch'], testing_data['test_labels']
 y_test_scalar = np.argmax(y_test, 1) + 1
-x_train, y_train = Training_data['train_patch'], Training_data['train_labels']
+x_train, y_train = training_data['train_patch'], training_data['train_labels']
 
 if not os.path.exists(args.directory):
 	os.makedirs(args.directory)
@@ -107,6 +117,8 @@ save_path = os.path.join(args.directory, "saved_model.ckpt")
 # Launch the graph
 saver = tf.train.Saver()
 with tf.Session() as sess:
+	least_loss = 100.0
+	
 	if args.restore and os.path.exists(args.directory):
 		saver.restore(sess, save_path)
 		print()
@@ -117,46 +129,42 @@ with tf.Session() as sess:
 	# Training cycle
 	
 	for epoch in range(args.epochs):
-		
-		# mix the training data.
 		if epoch % 5 == 0:
-			permutation = np.random.permutation(Training_data["train_patch"].shape[0])
-			Training_data["train_patch"] = Training_data["train_patch"][permutation, :]
-			Training_data["train_labels"] = Training_data["train_labels"][permutation, :]
-			permutation = np.random.permutation(Test_data["test_patch"].shape[0])
-			Test_data["test_patch"] = Test_data["test_patch"][permutation, :]
-			Test_data["test_labels"] = Test_data["test_labels"][permutation, :]
+			permutation = np.random.permutation(training_data["train_patch"].shape[0])
+			training_data["train_patch"] = training_data["train_patch"][permutation, :]
+			training_data["train_labels"] = training_data["train_labels"][permutation, :]
+			permutation = np.random.permutation(testing_data["test_patch"].shape[0])
+			testing_data["test_patch"] = testing_data["test_patch"][permutation, :]
+			testing_data["test_labels"] = testing_data["test_labels"][permutation, :]
 			print("randomized")
 		
 		iters = num_train // batch_size
 		for iter in range(iters):
-			batch_x = Training_data['train_patch'][iter * batch_size:(iter + 1) * batch_size, :]
-			batch_y = Training_data['train_labels'][iter * batch_size:(iter + 1) * batch_size, :]
+			batch_x = training_data['train_patch'][iter * batch_size:(iter + 1) * batch_size, :]
+			batch_y = training_data['train_labels'][iter * batch_size:(iter + 1) * batch_size, :]
 			_, batch_cost, train_acc = sess.run([optimizer, cost, accuracy], feed_dict={x: batch_x, y: batch_y})
-			print(
-				"\repochs:{:3d}  batch:{:4d}/{:4d}  accuracy:{:.6f}  cost:{:.6f}".format(epoch + 1, iter + 1, iters,
-																						 train_acc,
-																						 batch_cost), end="")
+			print("\repochs:{:3d}  batch:{:4d}/{:4d}({:.3f}%)  accuracy:{:.6f}  cost:{:.6f}".format(epoch + 1,
+				  iter + 1, iters, (iter + 1) * 100.0 / iters, train_acc, batch_cost), end="")
+		print()
+		if batch_cost < least_loss:
+			least_loss = batch_cost
+			saver.save(sess, save_path=save_path)
+			print("model saved")
 		
 		if num_train % batch_size != 0:
-			batch_x = Training_data['train_patch'][iters * batch_size:, :]
-			batch_y = Training_data['train_labels'][iters * batch_size:, :]
+			batch_x = training_data['train_patch'][iters * batch_size:, :]
+			batch_y = training_data['train_labels'][iters * batch_size:, :]
 			_, batch_cost, train_acc = sess.run([optimizer, cost, accuracy], feed_dict={x: batch_x, y: batch_y})
-		# print(
-		# 	"\repochs:{:3d}  batch:{:4d}/{:4d}  accuracy:{:.6f}  cost:{:.6f}".format(epoch, iters, iters, train_acc,
-		# 																			 batch_cost), end="")
-		saver.save(sess, save_path=save_path)
-		print("\nmodel saved")
 		
 		idx = np.random.choice(num_test, size=batch_size, replace=False)
 		# Use the random index to select random images and labels.
-		test_batch_x = Test_data['test_patch'][idx, :]
-		test_batch_y = Test_data['test_labels'][idx, :]
+		test_batch_x = testing_data['test_patch'][idx, :]
+		test_batch_y = testing_data['test_labels'][idx, :]
 		ac, cs, pr, ory = sess.run([accuracy, cost, pred, y], feed_dict={x: test_batch_x, y: test_batch_y})
 		print('Test Data Eval: Test Accuracy = %.4f, Test Cost =%.4f' % (ac, cs))
 		
-		pr = normalize(pr)
-		
+		# pr = normalize(pr)
+		#
 		for ii in pr[1]:
 			print("%.6f" % ii, end=" ")
 		print()
@@ -165,15 +173,12 @@ with tf.Session() as sess:
 		print()
 	
 	print("optimization finished!")
-
-with tf.Session() as sess:
-	saver.restore(sess, save_path)
 	
 	print("==========training data===========")
 	arr, rst = sess.run([pred, y],
-						feed_dict={x: Training_data["train_patch"][0:20, :], y: Training_data["train_labels"][0:20, :]})
+						feed_dict={x: training_data["train_patch"][0:20, :], y: training_data["train_labels"][0:20, :]})
 	
-	arr = normalize(arr)
+	# arr = normalize(arr)
 	
 	for i in range(20):
 		for item in arr[i]:
@@ -185,9 +190,8 @@ with tf.Session() as sess:
 	print()
 	
 	print("==========test data===========")
-	# print(Test_data["test_patch"])
 	arr, rst = sess.run([pred, y],
-						feed_dict={x: Test_data["test_patch"][0:20, :], y: Test_data["test_labels"][0:20, :]})
+						feed_dict={x: testing_data["test_patch"][0:20, :], y: testing_data["test_labels"][0:20, :]})
 	for i in range(20):
 		for item in arr[i]:
 			print("%.6f" % item, end=" ")
@@ -202,39 +206,17 @@ with tf.Session() as sess:
 	pred_times = num_all // args.predict_batch
 	prob_map = np.zeros((1, n_classes))
 	for i in range(pred_times):
-		feedx = np.reshape(np.asarray(All_data["patch"][i * args.predict_batch:(i + 1) * args.predict_batch]),
-						   (-1, n_input))
-		# print(feedx[1])
+		feedx = np.transpose(np.asarray(All_data["patch"][i * args.predict_batch:(i + 1) * args.predict_batch]),
+							 (0, 2, 3, 1))
+		feedx = np.reshape(feedx, (-1, n_input))
 		temp = sess.run(pred, feed_dict={x: feedx})
-		
-		"""for itm in temp[0]:
-			print("%.6lf" % itm, end=" ")
-		print()
-		print(All_data["labels"][i * args.predict_batch])"""
-		
+		print("\r{:.4f}% data processed.".format((i + 1) * 100.0 / pred_times), end="")
 		prob_map = np.concatenate((prob_map, temp), axis=0)
 	if num_all % args.predict_batch != 0:
-		feedx = np.reshape(np.asarray(All_data["patch"][pred_times * args.predict_batch:]), (-1, n_input))
-		# feedx = np.asarray(All_data["patch"][pred_times * args.predict_batch:], (-1, n_input))
+		feedx = np.transpose(np.asarray(All_data["patch"][pred_times * args.predict_batch:]), (0, 2, 3, 1))
+		feedx = np.reshape(feedx, (-1, n_input))
 		temp = sess.run(pred, feed_dict={x: feedx})
 		prob_map = np.concatenate((prob_map, temp), axis=0)
-	
-	"""
-	num_all = len(All_data['patch'])
-	times = args.predict_times
-	num_each_time = int(num_all / times)
-	res_num = num_all - times * num_each_time
-	Num_Each_File = num_each_time * np.ones((1, times), dtype=int)
-	Num_Each_File = Num_Each_File[0]
-	Num_Each_File[times - 1] = Num_Each_File[times - 1] + res_num
-	start = 0
-	prob_map = np.zeros((1, n_classes))
-	for i in range(times):
-		feed_x = np.reshape(np.asarray(All_data['patch'][start:start + Num_Each_File[i]]), (-1, n_input))
-		temp = sess.run(pred, feed_dict={x: feed_x})
-		prob_map = np.concatenate((prob_map, temp), axis=0)
-		start += Num_Each_File[i]
-	"""
 	
 	prob_map = np.delete(prob_map, (0), axis=0)
 	
