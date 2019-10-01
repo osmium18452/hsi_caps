@@ -6,12 +6,10 @@ from utils import patch_size, Post_Processing, safe_norm, squash
 import numpy as np
 import os
 import scipy.io
-# from cnn_model import conv_net
 import time
 import capslayer as cl
 from caps_model import caps_net, caps_net_mod
 import argparse
-import pickle
 
 
 def normalize(rt):
