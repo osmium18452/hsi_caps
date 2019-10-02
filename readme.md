@@ -31,7 +31,9 @@ installing it into Windows. So I recommend you to install it into a Linux-based 
 2. Run the code with default parameters using `python cl_caps_hsi.py`. Or use `python cl_caps_hsi.py -h` for more 
 options.
 
-## Current issues
+## Issues and solution
 
-Now the model has some problem when computing the probability map. 
-
+1. There's something abnormal with the data loader. Remember that the dimension of the dataset it returns is 
+`(batch_size, channels, patch_size, patch_size)`. But the data dimension the model needs is `(batch_size, patch_size,
+patch_size, channels)`. So you have to transpose the dimension to make sure that the dimension of the input data is
+correspond to the model's input layer. 
