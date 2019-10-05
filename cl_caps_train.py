@@ -1,8 +1,8 @@
 from __future__ import print_function
 import tensorflow as tf
 import HSI_Data_Preparation
-from HSI_Data_Preparation import num_train, Band, All_data, TrainIndex, TestIndex, Height, Width, num_test
-from utils import patch_size, Post_Processing
+from HSI_Data_Preparation import num_train, Band, All_data, TrainIndex, TestIndex, Height, Width, num_test, Num_Classes
+from utils import patch_size, Post_Processing, normalize
 import numpy as np
 import os
 import scipy.io
@@ -10,18 +10,6 @@ import time
 import capslayer as cl
 from caps_model import caps_net, caps_net_mod, caps_net_3
 import argparse
-
-
-def normalize(rt):
-	ans = np.zeros((1, rt.shape[1]))
-	for item in rt:
-		sum = 0.
-		for i in item:
-			sum += i
-		ans = np.concatenate((ans, np.reshape(item / sum, (1, -1))), axis=0)
-	rtn = np.delete(ans, (0), axis=0)
-	return rtn
-
 
 parser = argparse.ArgumentParser(description="Capsule Network on MNIST")
 parser.add_argument("-e", "--epochs", default=100, type=int,
@@ -46,7 +34,7 @@ parser.add_argument("-o", "--optimizer", default="adam", type=str,
 					help="Use adam optimizer or sgd optmizer")
 parser.add_argument("-p", "--predict_batch", default=100, type=int,
 					help="Predict batch size.")
-parser.add_argument("-n","--normalize",default=1,type=int,
+parser.add_argument("-n", "--normalize", default=1, type=int,
 					help="Normalize the result with 1 or not with 0.")
 args = parser.parse_args()
 
@@ -71,7 +59,7 @@ testing_data['test_patch'] = np.reshape(testing_data['test_patch'], (-1, n_input
 learning_rate = args.lr
 batch_size = args.batch
 display_step = 500
-n_classes = 16
+n_classes = Num_Classes
 
 x = tf.placeholder(shape=[None, n_input], dtype=tf.float32, name="X")
 y = tf.placeholder(shape=[None, n_classes], dtype=tf.float32, name="y")
@@ -86,7 +74,7 @@ else:
 		pred = caps_net_3(x)
 
 if args.normalize == 1:
-	pred=tf.divide(pred,tf.reduce_sum(pred,1,keep_dims=True))
+	pred = tf.divide(pred, tf.reduce_sum(pred, 1, keep_dims=True))
 
 margin_loss = cl.losses.margin_loss(y, pred)
 cost = tf.reduce_mean(margin_loss)
@@ -144,7 +132,10 @@ with tf.Session() as sess:
 			batch_y = training_data['train_labels'][iter * batch_size:(iter + 1) * batch_size, :]
 			_, batch_cost, train_acc = sess.run([optimizer, cost, accuracy], feed_dict={x: batch_x, y: batch_y})
 			print("\repochs:{:3d}  batch:{:4d}/{:4d}({:.3f}%)  accuracy:{:.6f}  cost:{:.6f}".format(epoch + 1,
-				  iter + 1, iters, (iter + 1) * 100.0 / iters, train_acc, batch_cost), end="")
+																									iter + 1, iters, (
+																												iter + 1) * 100.0 / iters,
+																									train_acc,
+																									batch_cost), end="")
 		print()
 		if batch_cost < least_loss:
 			least_loss = batch_cost

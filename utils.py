@@ -11,7 +11,7 @@ import scipy.io as io
 from pygco import cut_simple, cut_simple_vh
 from sklearn.metrics import accuracy_score
 
-patch_size = 9 # can be tuned
+patch_size = 9  # can be tuned
 
 
 class DataSet(object):
@@ -119,6 +119,17 @@ def convertToOneHot(vector, num_classes=None):
 	result = np.zeros(shape=(len(vector), num_classes))
 	result[np.arange(len(vector)), vector] = 1
 	return result.astype(int)
+
+
+def normalize(rt):
+	ans = np.zeros((1, rt.shape[1]))
+	for item in rt:
+		sum = 0.
+		for i in item:
+			sum += i
+		ans = np.concatenate((ans, np.reshape(item / sum, (1, -1))), axis=0)
+	rtn = np.delete(ans, (0), axis=0)
+	return rtn
 
 
 def unaries_reshape(unaries, height, width, num_classes):
