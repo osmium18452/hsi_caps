@@ -37,3 +37,6 @@ options.
 `(batch_size, channels, patch_size, patch_size)`. But the data dimension the model needs is `(batch_size, patch_size,
 patch_size, channels)`. So you have to transpose the dimension to make sure that the dimension of the input data is
 correspond to the model's input layer. 
+2. The current model requires 20% of the total samples used as the training. 90% more accurate cna be achieved after 
+training. But the ratio of training samples is a little higher. Further experiment is expected.
+3. The dataloader is expected to rewrite to realize more functions.
