@@ -17,8 +17,23 @@ start_time = time.time()
 
 ## Load data
 DATA_PATH = os.path.join(os.getcwd(), "Data")
-Data = scipy.io.loadmat(os.path.join(DATA_PATH, 'Indian_pines.mat'))['indian_pines']
-Label = scipy.io.loadmat(os.path.join(DATA_PATH, 'Indian_pines_gt.mat'))['indian_pines_gt']
+Data = scipy.io.loadmat(os.path.join(DATA_PATH, 'SalinasA_corrected.mat'))['salinasA_corrected']
+Label = scipy.io.loadmat(os.path.join(DATA_PATH, 'SalinasA_gt.mat'))['salinasA_gt']
+for i in range(Label.shape[0]):
+	for j in range(Label.shape[1]):
+		if Label[i][j]==10:
+			Label[i][j]=2
+		elif Label[i][j]==11:
+			Label[i][j]=3
+		elif Label[i][j]==12:
+			Label[i][j]=4
+		elif Label[i][j]==13:
+			Label[i][j]=5
+		elif Label[i][j]==14:
+			Label[i][j]=6
+
+# Data = scipy.io.loadmat(os.path.join(DATA_PATH, 'Indian_pines.mat'))['indian_pines']
+# Label = scipy.io.loadmat(os.path.join(DATA_PATH, 'Indian_pines_gt.mat'))['indian_pines_gt']
 
 # Data = scipy.io.loadmat(os.path.join(DATA_PATH, 'PaviaU.mat'))['paviaU']
 # Label = scipy.io.loadmat(os.path.join(DATA_PATH, 'PaviaU_gt.mat'))['paviaU_gt']
@@ -77,6 +92,7 @@ for j in range(0, Width):
 		if (curr_tar != 0):
 			Classes[curr_tar - 1].append(curr_inp)
 			Classes_Index[curr_tar - 1].append(curr_ind)
+		print("\rdata processed:{:.2f}%".format((i*Width+Height)/(Width*Height)*100),end="")
 All_data = {}
 All_data['patch'] = All_Patches
 All_data['labels'] = All_Labels
